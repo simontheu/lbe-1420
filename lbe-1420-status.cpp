@@ -23,8 +23,19 @@ using namespace std;
 
 #include <time.h>
 
-//Leo GPS Clock
-#include "GPSSettings.h"
+//Leo LBE-142x defines, dont need anything external this time
+#define VID_LBE		0x1dd2
+
+#define PID_LBE_1420	0x2443
+#define PID_LBE_1421	0xffff
+
+//Status bits
+
+#define GPS_LOCK_BIT 		0x01
+#define RES_1_BIT 		0x02
+#define ANT_OK_BIT 		0x04
+#define RES_3_BIT 		0x08
+#define OUT1_EN_BIT 	0x10
 
 /*
  * Ugly hack to work around failing compilation on systems that don't
@@ -80,8 +91,8 @@ int main(int argc, char **argv)
             printf("Device Info:\n");
             printf("\tvendor: 0x%04hx\n", info.vendor);
             printf("\tproduct: 0x%04hx\n", info.product);
-            if (info.vendor != VID_LB_USB || (info.product != PID_GPS_CLOCK && info.product != PID_MINI_GPS_CLOCK)) {
-                perror("Not a valid GPS Clock Device");
+            if (info.vendor != VID_LBE || (info.product != PID_LBE_1420 && info.product != PID_LBE_1421)) {
+                perror("Not a valid LBE-14xx Device");
                 return -1;//Device not valid
             }
       }
