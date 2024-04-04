@@ -1,5 +1,5 @@
-#include <iostream>
-using namespace std;
+//#include <iostream>
+//using namespace std;
 
 /* Linux */
 #include <linux/types.h>
@@ -58,7 +58,7 @@ int processCommandLineArguments(int argc, char **argv, int *freq, int *blink, in
 
 int main(int argc, char **argv)
 {
-      cout << "Leo Bodnar LBE-142x GPS locked clock source" << endl;
+      printf("Leo Bodnar LBE-142x GPS locked clock source config\n");
       
       int fd;
       int i, res, desc_size = 0;
@@ -77,7 +77,7 @@ int main(int argc, char **argv)
 	    printf("Usage: lbe-1420-set-freq /dev/hidraw??\n\n");
             printf("        --f1:  integer within the range of 1 to 1100000000 (1Hz to 1.1GHz)\n               the frequency is saved in flash\n\n");
             printf(" --f1_nosave:  integer within the range of 1 to 1100000000 (1Hz to 1.1GHz)\n               the frequency is not saved\n\n");
-            printf("     --out1:    on/off\n\n");
+            printf("     --out1:    [0,1]\n\n");
             printf("   --blink1     blinks output 1 LED for 3 seconds\n\n");
             return -1;
       }
@@ -88,7 +88,7 @@ int main(int argc, char **argv)
 
       if (fd < 0) 
       {
-            perror("Unable to open device");
+            perror("    Unable to open device");
             return 1;
       }
 
@@ -105,10 +105,10 @@ int main(int argc, char **argv)
       else
       {
             if (info.vendor != VID_LBE || (info.product != PID_LBE_1420 && info.product != PID_LBE_1421)) {
-                printf("Not a valid LBE-142x Device\n");
-                  printf("Device Info:\n");
-                  printf("\tvendor: 0x%04hx\n", info.vendor);
-                  printf("\tproduct: 0x%04hx\n", info.product);
+                printf("    Not a valid LBE-142x Device\n\n");
+                  printf("    Device Info:\n");
+                  printf("        vendor: 0x%04hx\n", info.vendor);
+                  printf("        product: 0x%04hx\n", info.product);
                   return -1;//Device not valid
             }
       }
@@ -120,7 +120,7 @@ int main(int argc, char **argv)
             perror("HIDIOCGRAWNAME");
       }
       else {
-            printf("Connected To: %s\n", buf);
+            printf("Connected To: %s\n\n", buf);
       }
 
       /* Get Feature */
@@ -130,28 +130,26 @@ int main(int argc, char **argv)
       if (res < 0) {
             perror("HIDIOCGFEATURE");
       } else {
+	      printf("  Status:\n");
             //currentSettings->setParamsFromReadBuffer(buf,res);
             if (buf[0] == 0) {
 		    if ((buf[1] & 0x15) == 0x15) {
-		    	printf("Device OK");
+		    	printf("    Device OK");
 		    } else {
 		    	if ((buf[1] & GPS_LOCK_BIT) != GPS_LOCK_BIT) {
-		    		printf("\nNo GPS lock\n");	
+		    		printf("\n    No GPS lock\n");	
 		    	}
 		    	if ((buf[1] & ANT_OK_BIT) != ANT_OK_BIT) {
-		    		printf("\nGPS antenna short circuit\n");	
+		    		printf("\n    GPS antenna short circuit\n");	
 		    	}
 		    	if ((buf[1] & OUT1_EN_BIT) != OUT1_EN_BIT) {
-		    		printf("\nGPS antenna short circuit\n");	
+		    		printf("\n    GPS antenna short circuit\n");	
 		    	}
 		    }
 		    current_f = (buf[5] << 24) + (buf[4] << 16) + (buf[3] << 8) + buf[2];
-	            printf("\nCurrent Frequency: %i\n", current_f);
+	            printf("\n    Current Frequency: %i\n", current_f);
             }
-            //currentSettings->printParameters();
-//            for (int i = 0; i < sizeof(buf); i++) {
-  //          	printf(" %u : %0x\n", i, buf[i]);
-    //        }
+
             printf("\n");
       }
 
@@ -163,25 +161,22 @@ int main(int argc, char **argv)
       }
       else {
 
-            printf("New Settings:\n");
-
 	//Get CLI values as vars
 	int blink = -1;
 	int enable = -1;
 	int save = -1;
 	int new_f = 0xffffffff;
 	processCommandLineArguments(argc, argv, &new_f, &blink, &enable, &save);
-	
+      	printf("  Changes:\n");
 	if (new_f != 0xffffffff && new_f != current_f) {
 	    //Set Frequency
-	    printf ("Setting Frequecy: %i\n", new_f);
+	    printf ("    Setting Frequecy: %i\n", new_f);
 	    
 	    buf[0] = (save == 1 ? 4 : 3);//4 Save, 3 dont save
 	    buf[1] = (new_f >>  0) & 0xff;
 	    buf[2] = (new_f >>  8) & 0xff;
 	    buf[3] = (new_f >> 16) & 0xff;
      	    buf[4] = (new_f >> 24) & 0xff;
-	    printf ("Setting Enable State %i\n", enable);
 	    /* Set Feature */
             res = ioctl(fd, HIDIOCSFEATURE(60), buf);
             if (res < 0) perror("HIDIOCSFEATURE");
@@ -189,26 +184,18 @@ int main(int argc, char **argv)
 	if (enable != -1) {
 	    buf[0] = 1;
 	    buf[1] = enable & 0x01;
-	    printf ("Setting Enable State %i\n", enable);
+	    printf ("    Enable State :%i\n", enable);
 	    /* Set Feature */
             res = ioctl(fd, HIDIOCSFEATURE(60), buf);
             if (res < 0) perror("HIDIOCSFEATURE");
 	}
 	if (blink != -1) {
 	    buf[0] = 2;
-	    printf ("Set Blinking");
+	    printf ("    Blink LED\n");
 	    /* Set Feature */
             res = ioctl(fd, HIDIOCSFEATURE(60), buf);
             if (res < 0) perror("HIDIOCSFEATURE");
 	}
-	printf ("\n\nDEBUG:::::::: Blink %i Enable: %i\n\n", blink, enable);
-	//Create SetFeature buffer
-	    
-	    
-	    
-            /* Set Feature */
-            res = ioctl(fd, HIDIOCSFEATURE(60), buf);
-            if (res < 0) perror("HIDIOCSFEATURE");
       }
       close(fd);
 
@@ -219,13 +206,13 @@ int main(int argc, char **argv)
 int processCommandLineArguments(int argc, char **argv, int *freq, int *blink, int *enable,int *save)
 {
     int c;
-
+    
     while (1)
     {
         static struct option long_options[] =
         {
                 /* These options set a flag. */
-                {"blink1", no_argument, blink, 1},
+                {"blink1", no_argument, 0, 0},
                 /* These options don’t set a flag.
                     We distinguish them by their indices. */
                 {"f1",    required_argument, 0, 'a'},
@@ -246,13 +233,10 @@ int processCommandLineArguments(int argc, char **argv, int *freq, int *blink, in
         switch (c)
         {
             case 0:
+            	*blink = 1;
                 /* If this option set a flag, do nothing else now. */
                 if (long_options[option_index].flag != 0)
                         break;
-                printf ("option %s", long_options[option_index].name);
-                if (optarg)
-                        printf (" with arg %s", optarg);
-                printf ("\n");
                 break;
             
             case 'a'://f1
