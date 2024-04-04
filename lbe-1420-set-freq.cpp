@@ -176,11 +176,11 @@ int main(int argc, char **argv)
 	    //Set Frequency
 	    printf ("Setting Frequecy: %i\n", new_f);
 	    
-	    buf[0] = save == 1 ? 4 : 3;//4 Save, 3 dont save
-	    buf[1] = (new_f >> 24) & 0xff;
-	    buf[2] = (new_f >> 16) & 0xff;
-	    buf[3] = (new_f >>  8) & 0xff;
-     	    buf[4] = (new_f >>  0) & 0xff;
+	    buf[0] = (save == 1 ? 4 : 3);//4 Save, 3 dont save
+	    buf[1] = (new_f >>  0) & 0xff;
+	    buf[2] = (new_f >>  8) & 0xff;
+	    buf[3] = (new_f >> 16) & 0xff;
+     	    buf[4] = (new_f >> 24) & 0xff;
 	    printf ("Setting Enable State %i\n", enable);
 	    /* Set Feature */
             res = ioctl(fd, HIDIOCSFEATURE(60), buf);
