@@ -77,8 +77,8 @@ int main(int argc, char **argv)
 	    printf("Usage: lbe-1420-set-freq /dev/hidraw??\n\n");
             printf("        --f1:  integer within the range of 1 to 1100000000 (1Hz to 1.1GHz)\n               the frequency is saved in flash\n\n");
             printf(" --f1_nosave:  integer within the range of 1 to 1100000000 (1Hz to 1.1GHz)\n               the frequency is not saved\n\n");
-            printf("     --out1:    [0,1]\n\n");
-            printf("   --blink1     blinks output 1 LED for 3 seconds\n\n");
+            printf("      --out1:  [0,1]\n\n");
+            printf("    --blink1   blinks output 1 LED for 3 seconds\n\n");
             return -1;
       }
 
