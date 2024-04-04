@@ -168,6 +168,7 @@ int main(int argc, char **argv)
 	int new_f = 0xffffffff;
 	processCommandLineArguments(argc, argv, &new_f, &blink, &enable, &save);
       	printf("  Changes:\n");
+      	int changed = 0;
 	if (new_f != 0xffffffff && new_f != current_f) {
 	    //Set Frequency
 	    printf ("    Setting Frequecy: %i\n", new_f);
@@ -180,6 +181,7 @@ int main(int argc, char **argv)
 	    /* Set Feature */
             res = ioctl(fd, HIDIOCSFEATURE(60), buf);
             if (res < 0) perror("HIDIOCSFEATURE");
+            changed = 1;
 	}
 	if (enable != -1) {
 	    buf[0] = 1;
@@ -188,6 +190,7 @@ int main(int argc, char **argv)
 	    /* Set Feature */
             res = ioctl(fd, HIDIOCSFEATURE(60), buf);
             if (res < 0) perror("HIDIOCSFEATURE");
+            changed = 1;
 	}
 	if (blink != -1) {
 	    buf[0] = 2;
@@ -195,6 +198,10 @@ int main(int argc, char **argv)
 	    /* Set Feature */
             res = ioctl(fd, HIDIOCSFEATURE(60), buf);
             if (res < 0) perror("HIDIOCSFEATURE");
+            changed = 1;
+	}
+	if (!changed) {
+	    printf("    No changes made\n");
 	}
       }
       close(fd);
