@@ -17,8 +17,8 @@ For the frequency setting and status utility:
 1. List hidraw devices:
     ls -l /dev/hidraw*
 
-    crw------- 1 root root 246, 0 12. Aug 09:31 /dev/hidraw0
-    crw------- 1 root root 246, 1 22. Aug 16:22 /dev/hidraw1
+    crw------- 1 root root 246, 0 12. Aug 09:31 /dev/hidraw0\n
+    crw------- 1 root root 246, 1 22. Aug 16:22 /dev/hidraw1\n
 
 2. Check hidraw devices until you find the correct device
     cat /sys/class/hidraw/hidraw1/device/uevent
