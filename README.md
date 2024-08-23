@@ -14,8 +14,8 @@ For the frequency setting and status utility:
 
 ## Finding Your Device ##
 
-1. List hidraw devices:
-    ls -l /dev/hidraw*
+1. List hidraw devices:\
+	ls -l /dev/hidraw*
 
     crw------- 1 root root 246, 0 12. Aug 09:31 /dev/hidraw0\
     crw------- 1 root root 246, 1 22. Aug 16:22 /dev/hidraw1
