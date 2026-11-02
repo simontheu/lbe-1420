@@ -1,20 +1,30 @@
-CFLAGS=-g
-LBPROGRAMS=lbe-142x
+# LBE-1420 config utility
+# Original: simontheu - https://github.com/simontheu/lbe-1420
+# Modificaciones: Copyright (c) 2026 Manuel - EA7JRS
 
-HIDLIB=-L. -lhidapi-hidraw -Wl,-rpath,.
+CC      ?= cc
+CFLAGS  ?= -O2 -g
+CFLAGS  += -Wall -Wextra -std=c11
+PREFIX  ?= /usr/local
+PROG     = lbe-142x
+RULES    = 99-lbe-142x.rules
 
-all: lbe-142x-utils
+all: $(PROG)
 
-libhidapi-hidraw.so:
-	ln -s libhidapi-hidraw.so.0 libhidapi-hidraw.so
+$(PROG): lbe-142x.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ $< $(LDFLAGS)
 
-lbe-142x-utils: lbe-142x.c
-	gcc ${CFLAGS} -o lbe-142x lbe-142x.c -I.
+install: $(PROG)
+	install -Dm755 $(PROG) $(DESTDIR)$(PREFIX)/bin/$(PROG)
 
-all-clean:
-	rm ${LBPROGRAMS} libhidapi-hidraw.so
+install-udev:
+	install -Dm644 $(RULES) $(DESTDIR)/etc/udev/rules.d/$(RULES)
+	-udevadm control --reload-rules && udevadm trigger --subsystem-match=hidraw
+
+uninstall:
+	rm -f $(DESTDIR)$(PREFIX)/bin/$(PROG) $(DESTDIR)/etc/udev/rules.d/$(RULES)
 
 clean:
-	rm ${PROGRAMS}
+	rm -f $(PROG)
 
-
+.PHONY: all install install-udev uninstall clean

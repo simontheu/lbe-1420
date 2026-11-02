@@ -1,0 +1,3 @@
+# Leo Bodnar LBE-1420 GPS Locked Clock Source - acceso a /dev/hidraw* sin root
+# Copyright (c) 2026 Manuel - EA7JRS
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1dd2", ATTRS{idProduct}=="2443", MODE="0660", GROUP="plugdev", TAG+="uaccess"
