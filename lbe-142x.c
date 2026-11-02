@@ -11,12 +11,15 @@
  *    (upstream skipped it, so "--f1_nosave X" followed by "--f1 X" never persisted X)
  *  - Fixed wrong status message for "output 1 disabled" (printed "antenna short circuit")
  *  - current frequency no longer used uninitialised when the status read fails
- *  - Frequency range per datasheet v1.1 (1 Hz .. 1.4 GHz), accepts suffixes: 10M, 25k, 1.4G
+ *  - Frequency range per official configurator v1.07 (1 Hz .. 1.6 GHz; datasheet v1.1 says 1.4 GHz),
+ *    accepts suffixes: 10M, 25k, 1.6G
  *    (the HID report carries an integer in Hz, so resolution here is 1 Hz)
  *  - --out1 validated (0/1); invalid/unknown options are errors, not silently ignored
  *  - Automatic device detection via sysfs (no need to hunt for /dev/hidrawN), --list, --serial
  *  - Read-back verification after setting the frequency
  *  - Meaningful exit codes, --check for monitoring scripts (exit 2 if not locked / alarm)
+ *  - --dump: read-only dump of HID report descriptor, status report and input reports,
+ *    to map the extra fields shown by the official configurator (sats, C/No, TCXO, FLL, ...)
  */
 
 #define _GNU_SOURCE
@@ -31,6 +34,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <dirent.h>
+#include <poll.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -40,13 +44,13 @@
 #include <getopt.h>
 #include <time.h>
 
-#define PROG_VERSION "2.0-ea7jrs"
+#define PROG_VERSION "2.1-ea7jrs"
 
 #define VID_LBE         0x1dd2
 #define PID_LBE_1420    0x2443
 
 #define FREQ_MIN        1UL
-#define FREQ_MAX        1400000000UL  /* datasheet v1.1: 1 Hz .. 1.4 GHz (upstream: 1.1 GHz) */
+#define FREQ_MAX        1600000000UL  /* configurator v1.07: "1Hz to 1600000000Hz" (datasheet v1.1: 1.4 GHz, upstream: 1.1 GHz) */
 
 /* Status bits (feature report 9, byte 1) */
 #define GPS_LOCK_BIT    0x01
@@ -112,6 +116,7 @@ struct options {
     int      save;
     int      out1;      /* -1 = unchanged */
     int      blink;
+    int      dump;      /* seconds of input reports to capture, 0 = off */
 };
 
 /* ------------------------------------------------------------------ */
@@ -345,6 +350,92 @@ static void print_status(const struct lbe_status *st)
 }
 
 /* ------------------------------------------------------------------ */
+/* Read-only dump, to map undocumented fields                          */
+/* ------------------------------------------------------------------ */
+
+static void hexdump(const uint8_t *b, int n)
+{
+    int i, j;
+
+    for (i = 0; i < n; i += 16) {
+        printf("  %04x:", i);
+        for (j = i; j < i + 16 && j < n; j++)
+            printf(" %02x", b[j]);
+        printf("\n");
+    }
+}
+
+static double now_s(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
+}
+
+static int dump_device(int fd, int seconds)
+{
+    static struct hidraw_report_descriptor rd;
+    uint8_t buf[256];
+    int dsize = 0, res, count = 0;
+    double t0, t;
+
+    if (ioctl(fd, HIDIOCGRDESCSIZE, &dsize) < 0 || dsize <= 0 || dsize > HID_MAX_DESCRIPTOR_SIZE) {
+        fprintf(stderr, "HIDIOCGRDESCSIZE: %s\n", strerror(errno));
+    } else {
+        memset(&rd, 0, sizeof rd);
+        rd.size = (__u32)dsize;
+        if (ioctl(fd, HIDIOCGRDESC, &rd) < 0) {
+            fprintf(stderr, "HIDIOCGRDESC: %s\n", strerror(errno));
+        } else {
+            printf("\nHID report descriptor (%d bytes):\n", dsize);
+            hexdump(rd.value, dsize);
+        }
+    }
+
+    memset(buf, 0, sizeof buf);
+    buf[0] = RPT_STATUS;
+    res = ioctl(fd, HIDIOCGFEATURE(sizeof buf), buf);
+    if (res < 0) {
+        fprintf(stderr, "HIDIOCGFEATURE(%u): %s\n", RPT_STATUS, strerror(errno));
+    } else {
+        printf("\nFeature report %u (%d bytes):\n", RPT_STATUS, res);
+        hexdump(buf, res);
+    }
+
+    printf("\nInput reports (%d s):\n", seconds);
+    t0 = now_s();
+    while ((t = now_s() - t0) < seconds) {
+        struct pollfd pfd = { fd, POLLIN, 0 };
+        int ms = (int)((seconds - t) * 1000) + 1;
+
+        res = poll(&pfd, 1, ms);
+        if (res < 0) {
+            if (errno == EINTR)
+                continue;
+            fprintf(stderr, "poll: %s\n", strerror(errno));
+            break;
+        }
+        if (res == 0)
+            break;
+        res = (int)read(fd, buf, sizeof buf);
+        if (res < 0) {
+            if (errno == EAGAIN || errno == EINTR)
+                continue;
+            fprintf(stderr, "read: %s\n", strerror(errno));
+            break;
+        }
+        if (res == 0)
+            break;
+        printf(" [%6.3f s] %d bytes\n", now_s() - t0, res);
+        hexdump(buf, res);
+        count++;
+    }
+    if (!count)
+        printf("  (none received)\n");
+    return RC_OK;
+}
+
+/* ------------------------------------------------------------------ */
 /* Command line                                                        */
 /* ------------------------------------------------------------------ */
 
@@ -357,10 +448,12 @@ static void usage(const char *prog)
            "  -l, --list            list connected LBE-1420 units and exit\n"
            "      --f1 FREQ         set output 1 frequency and save to flash\n"
            "      --f1_nosave FREQ  set output 1 frequency without saving\n"
-           "                        FREQ: 1 .. 1400000000 Hz, e.g. 10000000, 10M, 25k, 1.4G\n"
+           "                        FREQ: 1 .. 1600000000 Hz, e.g. 10000000, 10M, 25k, 1.6G\n"
            "      --out1 0|1        disable/enable output 1\n"
            "      --blink1          blink output 1 LED for 3 seconds\n"
            "  -c, --check           exit 2 if not locked, antenna fault or output disabled\n"
+           "      --dump[=SECS]     read-only: dump HID descriptor, status report and\n"
+           "                        input reports for SECS seconds (default 3)\n"
            "  -h, --help            this help\n"
            "  -V, --version         show version\n\n"
            "Exit codes: 0 OK, 1 error, 2 alarm (--check), 3 no device, 4 verify failed\n",
@@ -369,7 +462,7 @@ static void usage(const char *prog)
 
 static int parse_args(int argc, char **argv, struct options *o)
 {
-    enum { OPT_F1 = 1000, OPT_F1_NOSAVE, OPT_OUT1, OPT_BLINK1 };
+    enum { OPT_F1 = 1000, OPT_F1_NOSAVE, OPT_OUT1, OPT_BLINK1, OPT_DUMP };
     static const struct option longopts[] = {
         { "device",    required_argument, 0, 'd' },
         { "serial",    required_argument, 0, 'S' },
@@ -381,6 +474,7 @@ static int parse_args(int argc, char **argv, struct options *o)
         { "f1_nosave", required_argument, 0, OPT_F1_NOSAVE },
         { "out1",      required_argument, 0, OPT_OUT1 },
         { "blink1",    no_argument,       0, OPT_BLINK1 },
+        { "dump",      optional_argument, 0, OPT_DUMP },
         { 0, 0, 0, 0 }
     };
     int c, r;
@@ -401,7 +495,7 @@ static int parse_args(int argc, char **argv, struct options *o)
             r = parse_freq(optarg, &o->freq);
             if (r) {
                 fprintf(stderr, "Invalid frequency '%s': %s\n", optarg,
-                        r == -2 ? "out of range (1 Hz .. 1.4 GHz)" :
+                        r == -2 ? "out of range (1 Hz .. 1.6 GHz)" :
                         r == -3 ? "resolution is 1 Hz" : "not a number");
                 return -1;
             }
@@ -416,6 +510,16 @@ static int parse_args(int argc, char **argv, struct options *o)
             o->out1 = optarg[0] - '0';
             break;
         case OPT_BLINK1: o->blink = 1; break;
+        case OPT_DUMP: {
+            char *end;
+            long v = optarg ? strtol(optarg, &end, 10) : 3;
+            if (optarg && (*end || v < 1 || v > 600)) {
+                fprintf(stderr, "--dump seconds must be 1..600\n");
+                return -1;
+            }
+            o->dump = (int)v;
+            break;
+        }
         default:
             return -1;  /* getopt already printed the error */
         }
@@ -431,6 +535,10 @@ static int parse_args(int argc, char **argv, struct options *o)
     }
     if (optind < argc) {
         fprintf(stderr, "Unexpected argument '%s'\n", argv[optind]);
+        return -1;
+    }
+    if (o->dump && (o->set_freq || o->out1 != -1 || o->blink)) {
+        fprintf(stderr, "--dump is read-only and cannot be combined with changes\n");
         return -1;
     }
     return 0;
@@ -495,6 +603,12 @@ int main(int argc, char **argv)
 
     read_status(fd, &st);
     print_status(&st);
+
+    if (o.dump) {
+        rc = dump_device(fd, o.dump);
+        close(fd);
+        return rc;
+    }
 
     if (o.set_freq || o.out1 != -1 || o.blink)
         printf("\nChanges:\n");

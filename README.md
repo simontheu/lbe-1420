@@ -36,9 +36,10 @@ lbe-142x --serial 0673ED0E4101 --f1 27.12M   # con varios equipos conectados
 lbe-142x /dev/hidraw1 --f1 10000000          # sintaxis original, sigue funcionando
 ```
 
-Frecuencia: de 1 Hz a 1,4 GHz (según el datasheet v1.1; el original limitaba a 1,1 GHz). Se puede escribir en Hz
-(`10000000`) o con sufijo `k`, `M`, `G` y `Hz` opcional (`10M`, `2.048MHz`, `1.4G`). Si el firmware de tu equipo
-es antiguo y no acepta frecuencias por encima de 1,1 GHz, la verificación tras el cambio lo detecta (código 4).
+Frecuencia: de 1 Hz a 1,6 GHz, el límite que marca el configurador oficial v1.07 (el datasheet v1.1 dice 1,4 GHz
+y el original limitaba a 1,1 GHz). Se puede escribir en Hz (`10000000`) o con sufijo `k`, `M`, `G` y `Hz` opcional
+(`10M`, `2.048MHz`, `1.6G`). Si el firmware de tu equipo no admite el valor pedido, la verificación tras el cambio
+lo detecta (código 4).
 
 El datasheet indica una resolución de 1 µHz, pero el informe HID que usa esta utilidad lleva un entero en Hz,
 así que desde aquí la resolución es de 1 Hz.
@@ -73,15 +74,55 @@ Correcciones:
 - `getopt` estaba mal definido (`-a` sin argumento provocaba un fallo por puntero nulo) y las opciones desconocidas se ignoraban.
 - El `Makefile` tenía un `clean` roto; se eliminan el binario compilado y el `hidapi.h`, que no se usaba.
 
-Mejoras: rango hasta 1,4 GHz según el datasheet, byte de estado en crudo, detección automática del equipo, `--list`, `--serial`, validación de la frecuencia y de `--out1`,
+Mejoras: rango hasta 1,6 GHz según el configurador oficial, modo `--dump` de solo lectura, byte de estado en crudo, detección automática del equipo, `--list`, `--serial`, validación de la frecuencia y de `--out1`,
 sufijos k/M/G, verificación tras el cambio, códigos de salida, `--check`, regla udev y objetivos `install`.
 
-## Notas del datasheet (v1.1) y pendientes
+## Volcado de diagnóstico (`--dump`)
 
-- **Modo de baja potencia** (+6 dBm frente a +11 dBm por debajo de 400 MHz): el datasheet lo menciona, pero su
-  informe HID no está documentado y esta utilidad no lo controla todavía. Los bits `0x02` y `0x08` del byte de
-  estado tampoco están documentados. Para identificarlos: activa y desactiva el modo con la utilidad oficial de
-  Leo Bodnar y compara el valor de `Raw flags`.
+```
+lbe-142x --dump        # 3 s de captura
+lbe-142x --dump=10     # 10 s
+```
+
+Solo lee; no envía nada al equipo. Muestra el descriptor HID (qué informes existen y su tamaño), el informe de
+estado completo en hexadecimal y los informes de entrada que el equipo emite por su cuenta.
+
+## Lo que hace el configurador oficial (v1.07) y esta utilidad aún no
+
+Según las cadenas del programa *LBE-1420 Configuration v1.07* (Windows, VB6, 2025), el configurador ofrece:
+
+| Función | Texto en el configurador |
+|---|---|
+| Baja potencia | "Low power output – Reduce OUT power to +1dBm" |
+| Modo ADEV | "Enable better ADEV but lower absolute precision" |
+| Constelaciones | GPS, GLONASS, Galileo, BeiDou, SBAS (activables por separado) |
+| Modelo dinámico | Stationary, Portable, Airborne |
+| Restaurar valores de fábrica | "Factory reset" |
+| Satélites | Gráfica de C/N0 (dB) por satélite |
+| Posición y hora | Posición GPS y ajuste del reloj del PC desde el GPS |
+| Escritura de registros | "Register write" (función de depuración) |
+
+Por los campos que envía su enlace de diagnóstico, el equipo informa además de: satélites, C/N0, TCXO, estado
+del FLL, potencia, constelaciones, modelo dinámico, corriente de antena, posición, altitud y versión de firmware.
+
+Estos informes no están documentados públicamente, así que no se envían a ciegas: un informe mal formado podría
+cambiar la configuración del equipo. La forma segura de añadirlos es:
+
+1. Ejecutar `lbe-142x --dump` y guardar la salida.
+2. Cambiar **una sola** opción con el configurador oficial en Windows.
+3. Repetir el volcado y comparar qué bytes cambian.
+
+Para las órdenes de escritura (por ejemplo, baja potencia), lo fiable es capturar el tráfico USB del configurador
+con Wireshark + USBPcap mientras se pulsa cada opción.
+
+**Privacidad**: el botón *Diagnostics* del configurador abre una URL de leobodnar.com que incluye tu número de
+serie, tu posición GPS (latitud, longitud y altitud) y tu versión de Windows.
+
+## Otras notas del datasheet (v1.1)
+
+- **Baja potencia**: el datasheet habla de +6 dBm (por debajo de 400 MHz) y el configurador v1.07, de +1 dBm.
+  Seguramente cambió con el firmware.
+- Los bits `0x02` y `0x08` del byte de estado no están documentados; se pueden identificar con `--dump`.
 - **NMEA por puerto serie virtual**: el equipo también aparece como `/dev/ttyACM*` con las tramas NMEA del
   receptor GNSS. Se puede usar con `gpsd` o leer directamente (`cat /dev/ttyACM0`).
 - **Corriente de antena**: el datasheet se contradice (30 mA máximo en especificaciones, 50 mA en características).
