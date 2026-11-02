@@ -18,6 +18,7 @@
  *  - Automatic device detection via sysfs (no need to hunt for /dev/hidrawN), --list, --serial
  *  - Read-back verification after setting the frequency
  *  - Meaningful exit codes, --check for monitoring scripts (exit 2 if not locked / alarm)
+ *  - Firmware version shown (USB bcdDevice from sysfs, same value Firmware Doctor uses)
  *  - --dump: read-only dump of HID report descriptor, status report and input reports,
  *    to map the extra fields shown by the official configurator (sats, C/No, TCXO, FLL, ...)
  */
@@ -44,7 +45,7 @@
 #include <getopt.h>
 #include <time.h>
 
-#define PROG_VERSION "2.1-ea7jrs"
+#define PROG_VERSION "2.2-ea7jrs"
 
 #define VID_LBE         0x1dd2
 #define PID_LBE_1420    0x2443
@@ -246,6 +247,34 @@ static int find_devices(struct lbe_dev *devs, int max)
 /* HID access                                                          */
 /* ------------------------------------------------------------------ */
 
+/*
+ * Firmware version = bcdDevice of the USB device that owns this hidraw node
+ * (Firmware Doctor prints it as %X.%02X). Path: hidrawN/device -> HID device,
+ * ../.. -> USB device. Returns 0 and "1.07"-style text, or -1 if unknown.
+ */
+static int read_fw_version(const char *devpath, char *out, size_t n)
+{
+    const char *base = strrchr(devpath, '/');
+    char p[512], line[32];
+    unsigned bcd;
+    FILE *f;
+
+    base = base ? base + 1 : devpath;
+    if (strncmp(base, "hidraw", 6) != 0)
+        return -1;
+    snprintf(p, sizeof p, "%s/%.40s/device/../../bcdDevice", SYSFS_HIDRAW, base);
+    f = fopen(p, "r");
+    if (!f)
+        return -1;
+    if (!fgets(line, sizeof line, f) || sscanf(line, "%x", &bcd) != 1 || bcd > 0xffff) {
+        fclose(f);
+        return -1;
+    }
+    fclose(f);
+    snprintf(out, n, "%X.%02X", bcd >> 8, bcd & 0xff);
+    return 0;
+}
+
 static int open_device(const char *path)
 {
     struct hidraw_devinfo info;
@@ -278,6 +307,11 @@ static int open_device(const char *path)
     printf("Device:   %s\n", path);
     if (res > 0)
         printf("Name:     %s\n", name);
+    {
+        char fw[16];
+        if (read_fw_version(path, fw, sizeof fw) == 0)
+            printf("Firmware: v%s\n", fw);
+    }
     return fd;
 }
 
@@ -568,9 +602,13 @@ int main(int argc, char **argv)
             printf("No LBE-1420 found\n");
             return RC_NODEV;
         }
-        for (i = 0; i < ndev; i++)
-            printf("%-16s  SN %-14s  %s\n", devs[i].path,
-                   devs[i].serial[0] ? devs[i].serial : "?", devs[i].name);
+        for (i = 0; i < ndev; i++) {
+            char fw[16];
+            if (read_fw_version(devs[i].path, fw, sizeof fw) != 0)
+                snprintf(fw, sizeof fw, "?");
+            printf("%-16s  SN %-14s  fw v%-6s  %s\n", devs[i].path,
+                   devs[i].serial[0] ? devs[i].serial : "?", fw, devs[i].name);
+        }
         return RC_OK;
     }
 

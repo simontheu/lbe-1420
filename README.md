@@ -6,7 +6,20 @@ por USB (`hidraw`): consulta de estado, frecuencia de salida, activar/desactivar
 - Original: [simontheu/lbe-1420](https://github.com/simontheu/lbe-1420)
 - Modificaciones: Copyright (c) 2026 Manuel - EA7JRS
 
-> No actualiza firmware. Para eso sigue siendo necesario el *Firmware Doctor* de Leo Bodnar (Windows).
+> No actualiza firmware: para eso está el *Firmware Doctor* de Leo Bodnar (Windows). Ver "Actualizar el firmware".
+
+## Cómo funciona
+
+1. **Busca el equipo**: recorre `/sys/class/hidraw` y se queda con los dispositivos USB 1DD2:2443
+   (LBE-1420). Si hay uno, lo usa; si hay varios, pide elegir con `--device` o `--serial`.
+2. **Lo abre y lo comprueba**: confirma por `ioctl` que es un LBE-1420 de verdad antes de enviarle nada.
+3. **Lee la identificación**: nombre, número de serie y versión de firmware (campo `bcdDevice` del USB).
+4. **Lee el estado** (informe HID 9): enganche GPS, antena, salida 1, frecuencia actual y byte de estado en crudo.
+5. **Aplica los cambios pedidos**, en este orden: frecuencia (y la vuelve a leer para confirmarla), activar o
+   desactivar la salida, y parpadeo del LED. Cada orden se envía en un informe de 60 bytes puesto a cero.
+6. **Termina con un código de salida** que dice cómo fue (ver la tabla de códigos).
+
+Sin opciones de cambio, solo lee: no modifica nada del equipo.
 
 ## Compilar e instalar
 
@@ -27,7 +40,7 @@ El dispositivo se detecta automáticamente; ya no hace falta buscar el `/dev/hid
 
 ```
 lbe-142x                        # muestra el estado
-lbe-142x --list                 # lista los LBE-1420 conectados (ruta y nº de serie)
+lbe-142x --list                 # lista los LBE-1420 conectados (ruta, nº de serie y firmware)
 lbe-142x --f1 10M               # 10 MHz, guardado en flash
 lbe-142x --f1_nosave 25k        # 25 kHz, sin guardar (se pierde al apagar)
 lbe-142x --out1 0               # desactiva la salida 1
@@ -45,6 +58,15 @@ El datasheet indica una resolución de 1 µHz, pero el informe HID que usa esta 
 así que desde aquí la resolución es de 1 Hz.
 
 Después de cambiar la frecuencia, la utilidad vuelve a leerla del equipo para confirmar el cambio.
+
+## Actualizar el firmware
+
+1. Mira la versión actual: `lbe-142x --list` o `lbe-142x` (línea `Firmware:`).
+2. En Windows, ejecuta el *Firmware Doctor* de Leo Bodnar. Junto al equipo indica "update to vX.XX" si hay
+   versión nueva o "no online firmware" si no la hay. Pulsa *Update Firmware*.
+3. Precauciones: mejor Windows nativo que máquina virtual, conexión directa sin hub, portátil enchufado, y no
+   desconectar hasta que termine. Apunta antes la frecuencia configurada.
+4. Al terminar, comprueba aquí la nueva versión con `lbe-142x`.
 
 ## Monitorización
 
@@ -74,7 +96,7 @@ Correcciones:
 - `getopt` estaba mal definido (`-a` sin argumento provocaba un fallo por puntero nulo) y las opciones desconocidas se ignoraban.
 - El `Makefile` tenía un `clean` roto; se eliminan el binario compilado y el `hidapi.h`, que no se usaba.
 
-Mejoras: rango hasta 1,6 GHz según el configurador oficial, modo `--dump` de solo lectura, byte de estado en crudo, detección automática del equipo, `--list`, `--serial`, validación de la frecuencia y de `--out1`,
+Mejoras: versión de firmware, rango hasta 1,6 GHz según el configurador oficial, modo `--dump` de solo lectura, byte de estado en crudo, detección automática del equipo, `--list`, `--serial`, validación de la frecuencia y de `--out1`,
 sufijos k/M/G, verificación tras el cambio, códigos de salida, `--check`, regla udev y objetivos `install`.
 
 ## Volcado de diagnóstico (`--dump`)
